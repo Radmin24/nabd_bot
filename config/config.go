@@ -11,9 +11,12 @@ import (
 type Config struct {
 	TelegramToken string
 	APIEndpoint   string
+	APIorm        string
 	RedisAddr     string
 	RedisPassword string
 	VersionAPI    string
+	Timeout       int
+	Debug         bool
 	RedisDB       int
 }
 
@@ -28,12 +31,21 @@ func NewConfig() *Config {
 		redisDB = 0
 	}
 
+	timeout, err := strconv.Atoi(getEnv("TIMEOUT", "10"))
+	if err != nil {
+		log.Printf("Warning: Invalid TIMEOUT value, using default: 10")
+		timeout = 10
+	}
+
 	conf := &Config{
 		TelegramToken: getEnv("TELEGRAM_TOKEN", ""),
 		APIEndpoint:   getEnv("API_ENDPOINT", "http://127.0.0.1:8080/botapi/"),
+		APIorm:        getEnv("API_ORM_URL", "http://127.0.0.1:8081/"),
 		RedisAddr:     getEnv("REDIS_ADDR", "127.0.0.1:6379"),
 		RedisPassword: getEnv("REDIS_PASSWORD", ""),
 		VersionAPI:    getEnv("VERSION_API", "v1"),
+		Timeout:       timeout,
+		Debug:         getEnv("DEBUG", "false") == "true",
 		RedisDB:       redisDB,
 	}
 

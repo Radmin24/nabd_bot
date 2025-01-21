@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"not_a_boring_date_bot/api"
 	"not_a_boring_date_bot/bot"
@@ -11,14 +12,18 @@ import (
 func main() {
 	cfg := config.NewConfig()
 
-	apiClient := api.NewClient(cfg.APIEndpoint)
+	apiClient := api.NewClient(cfg.APIEndpoint, cfg.Timeout)
 
 	redisCache := cache.NewCache(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
 
-	bot, err := bot.NewBot(cfg.TelegramToken, apiClient, redisCache)
+	bot, err := bot.NewBot(cfg.TelegramToken, apiClient, redisCache, cfg.Debug)
 	if err != nil {
 		log.Fatalf("Error creating bot: %v", err)
 	}
+
+	ctx := context.Background()
+
+	go bot.CheckAPIStatus(bot, ctx, &cfg.APIEndpoint)
 
 	log.Println("Bot started...")
 
