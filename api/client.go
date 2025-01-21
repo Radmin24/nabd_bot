@@ -27,13 +27,13 @@ func NewClient(baseURL string, timeout int) *Client {
 	}
 }
 
-func (c *Client) SendCommand(ctx context.Context, data interface{}) (*models.ControllerResponce, error) {
+func (c *Client) SendCommand(ctx context.Context, data interface{}, updateType string) (*models.ControllerResponce, error) {
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"commands", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+updateType, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
 	}

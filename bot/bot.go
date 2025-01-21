@@ -3,7 +3,7 @@ package bot
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log"
 	"not_a_boring_date_bot/api"
 	"not_a_boring_date_bot/cache"
@@ -46,62 +46,103 @@ func (b *Bot) Start() error {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 	updates := b.bot.GetUpdatesChan(u)
-
+	var Id int64
 	ctx := context.Background()
-	for update := range updates {
 
-		switch {
-		case update.CallbackQuery != nil:
-			if update.CallbackQuery != nil && update.CallbackQuery.Data == "yes_my_handler" {
-				err := b.QueryMyHandler(ctx, update)
-				if err != nil {
-					log.Println(err)
+	apiStatus, err := b.cache.GetAPIStatus(ctx)
+	if err != nil {
+		log.Println("Ошибка при получении статуса API:", err)
+	}
+
+	for update := range updates {
+		isCallback := update.CallbackQuery != nil
+
+		if isCallback {
+			if apiStatus {
+				if update.CallbackQuery.Data == "yes_my_handler" {
+					if err := b.QueryMyHandler(ctx, update); err != nil {
+						log.Println("Ошибка при получении пользователя с Redis:", err)
+					}
+				} else {
+					if err := b.sendFormController(ctx, update); err != nil {
+						log.Println("Ошибка при отправке API сообщения:", err)
+					}
 				}
-				return nil
+			} else {
+				Id = update.CallbackQuery.From.ID
 			}
-		default:
-			err := b.sendFormController(ctx, update)
+		} else {
+			if apiStatus {
+				if err := b.sendFormController(ctx, update); err != nil {
+					log.Println("Ошибка при отправке API сообщения:", err)
+				}
+			} else {
+				Id = update.Message.From.ID
+			}
+		}
+
+		if Id != 0 {
+			jsonData, err := json.Marshal(update)
 			if err != nil {
-				log.Println(err)
+				log.Println("Ошибка при сериализации данных:", err)
+			}
+
+			if err := b.cache.AddUserToNotify(ctx, Id, jsonData); err != nil {
+				log.Println("Ошибка при добавлении пользователя в очередь на отправку:", err)
+			}
+
+			msg := tgbotapi.NewMessage(Id, messages.APIUnavailable)
+			msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
+			if _, err := b.bot.Send(msg); err != nil {
+				log.Println("Ошибка при отправки сообщения:", err)
 			}
 		}
 	}
-
 	return nil
 }
 
 func (b *Bot) sendFormController(ctx context.Context, update tgbotapi.Update) error {
 
-	apiResp, err := b.api.SendCommand(ctx, update)
+	var chatID int64
+	var updateType string
+
+	if update.CallbackQuery != nil {
+		chatID = update.CallbackQuery.Message.Chat.ID
+		// updateType = "callbacks"
+		updateType = "commands"
+
+	} else if update.Message != nil {
+		if update.Message.IsCommand() {
+			updateType = "commands"
+		}
+		chatID = update.Message.Chat.ID
+		// updateType = "messages"
+		updateType = "commands"
+	} else {
+		return errors.New("Неизвестный тип обновления")
+	}
+
+	apiResp, err := b.api.SendCommand(ctx, update, updateType)
 	if err != nil {
 		if err := b.cache.SetAPIStatus(ctx, false); err != nil {
-			log.Printf("Error setting API status: %v", err)
+			return errors.New("Ошибка при получении статуса API из Redis: " + err.Error())
 		}
 
 		jsonData, err := json.Marshal(update)
 		if err != nil {
-			return err
+			return errors.New("Ошибка при десирилизации: " + err.Error())
 		}
 
-		if err := b.cache.AddUserToNotify(ctx, update.Message.Chat.ID, jsonData); err != nil {
+		if err := b.cache.AddUserToNotify(ctx, chatID, jsonData); err != nil {
 			log.Printf("Error adding user to notify list: %v", err)
 		}
 
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, messages.APIUnavailable)
-		_, err = b.bot.Send(msg)
-		return err
+		msg := tgbotapi.NewMessage(chatID, messages.APIUnavailable)
+		msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
+		if _, err := b.bot.Send(msg); err != nil {
+			return errors.New("Ошибка при отправки сообшения: " + err.Error())
+		}
 	}
-
-	// apiStatus, err := b.cache.GetAPIStatus(ctx)
-	// if err != nil {
-	// 	log.Printf("Error getting API status: %v", err)
-	// }
-
-	// if !apiStatus {
-	// 	if err := b.notifyUsersAPIRestored(ctx); err != nil {
-	// 		log.Printf("Error notifying users about API restoration: %v", err)
-	// 	}
-	// }
 
 	var queue []*models.ControllerResponce
 
@@ -111,54 +152,55 @@ func (b *Bot) sendFormController(ctx context.Context, update tgbotapi.Update) er
 		apiRespId, err := b.api.SendID(ctx, apiResp.Id)
 		if err != nil {
 			if err := b.cache.SetAPIStatus(ctx, false); err != nil {
-				log.Printf("Error setting API status: %v", err)
+				log.Printf("Ошибка при установке статуса API: %v", err)
 			}
 
 			jsonData, err := json.Marshal(update)
 			if err != nil {
-				return err
+				return errors.New("Ошибка при десирилизации: " + err.Error())
 			}
 
-			if err := b.cache.AddUserToNotify(ctx, update.Message.Chat.ID, jsonData); err != nil {
-				log.Printf("Error adding user to notify list: %v", err)
+			if err := b.cache.AddUserToNotify(ctx, chatID, jsonData); err != nil {
+				log.Printf("Ошибка при установке пользователя в список для отправки: %v", err)
 			}
 
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, messages.APIUnavailable)
-			_, err = b.bot.Send(msg)
-			return err
+			msg := tgbotapi.NewMessage(chatID, messages.APIUnavailable)
+			msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
+			if _, err := b.bot.Send(msg); err != nil {
+				return errors.New("Ошибка при отправке сообщения: " + err.Error())
+			}
 		}
 		queue = append(queue, apiRespId)
 
 		id := apiRespId.Id
 
 		for {
-
 			resp, err := b.api.SendID(ctx, id)
 			if err != nil {
 				if err := b.cache.SetAPIStatus(ctx, false); err != nil {
-					log.Printf("Error setting API status: %v", err)
+					log.Printf("Ошибка при установке статуса API: %v", err)
 				}
 
 				jsonData, err := json.Marshal(update)
 				if err != nil {
-					return err
+					return errors.New("Ошибка при десирилизации: " + err.Error())
 				}
 
-				if err := b.cache.AddUserToNotify(ctx, update.Message.Chat.ID, jsonData); err != nil {
-					log.Printf("Error adding user to notify list: %v", err)
+				if err := b.cache.AddUserToNotify(ctx, chatID, jsonData); err != nil {
+					log.Printf("Ошибка при установке пользователя в список для отправки: %v", err)
 				}
 
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, messages.APIUnavailable)
-				_, err = b.bot.Send(msg)
-				return err
+				msg := tgbotapi.NewMessage(chatID, messages.APIUnavailable)
+				msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
+				if _, err := b.bot.Send(msg); err != nil {
+					return errors.New("Ошибка при отправке сообщения: " + err.Error())
+				}
 			}
-
 			queue = append(queue, resp)
 			if id == resp.Id {
-				log.Println("Error lading next ID DUBLICATE:", id)
+				log.Println("Ошибка загрузке так как повтор id:", id)
 				break
 			}
-
 			id = resp.Id
 			if !resp.IsNextMsg {
 				break
@@ -169,13 +211,13 @@ func (b *Bot) sendFormController(ctx context.Context, update tgbotapi.Update) er
 
 	if len(queue) > 0 {
 		for _, v := range queue {
-			Sender(v, b, update.Message.Chat.ID, ctx)
+			Sender(v, b, chatID, ctx)
 			if v.Delay > 0 {
 				time.Sleep(time.Duration(v.Delay) * time.Second)
 			}
 		}
 	} else {
-		Sender(apiResp, b, update.Message.Chat.ID, ctx)
+		Sender(apiResp, b, chatID, ctx)
 	}
 
 	return nil
@@ -184,18 +226,38 @@ func (b *Bot) sendFormController(ctx context.Context, update tgbotapi.Update) er
 func (b *Bot) QueryMyHandler(ctx context.Context, update tgbotapi.Update) error {
 
 	idstr := strconv.Itoa(int(update.CallbackQuery.From.ID))
+
 	usersToNotify, err := b.cache.GetUsersToNotifyFromYES(ctx, idstr)
-
-	fmt.Println("usersToNotify:", usersToNotify)
-
 	if err != nil {
-		log.Println(err)
+		msg := tgbotapi.NewMessage(update.CallbackQuery.From.ID, messages.NofoundHistory)
+		if _, err := b.bot.Send(msg); err != nil {
+			log.Println("Ошибка при отправке сообщения:", err)
+		}
+		return errors.New("Ошибка при получении пользователя с Redis: " + err.Error())
+	}
+
+	if usersToNotify == "" {
+		msg := tgbotapi.NewMessage(update.CallbackQuery.From.ID, messages.NofoundHistory)
+		if _, err := b.bot.Send(msg); err != nil {
+			log.Println("Ошибка при отправке сообщения:", err)
+		}
+		return errors.New("Ошибка пользователя. usersToNotify пуст: " + err.Error())
 	}
 
 	var updatereturn *tgbotapi.Update
 	err = json.Unmarshal([]byte(usersToNotify), &updatereturn)
+	if err != nil {
+		return errors.New("Ошибка при десериализации: " + err.Error())
+	}
 
-	b.sendFormController(ctx, *updatereturn)
+	if err = b.cache.DeleteUserToNotifyFromYes(ctx, idstr); err != nil {
+		log.Println("Ошибка удаления пользователя с Redis:", err)
+	}
+
+	if err = b.sendFormController(ctx, *updatereturn); err != nil {
+		return errors.New("Ошибка возникла ошибка при отправке формы: " + err.Error())
+
+	}
 
 	return nil
 }
@@ -214,8 +276,10 @@ func Sender(message *models.ControllerResponce, b *Bot, chatID int64, ctx contex
 		msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
 	}
 
-	_, err := b.bot.Send(msg)
-	return err
+	if _, err := b.bot.Send(msg); err != nil {
+		return errors.New("Ошибка при отправке сообщения: " + err.Error())
+	}
+	return nil
 }
 
 func generationReplyKeybord(replayKeyboard []models.Button) tgbotapi.ReplyKeyboardMarkup {
@@ -274,7 +338,7 @@ func (b *Bot) CheckAPIStatus(bot *Bot, ctx context.Context, urlApi *string) {
 		if apiStatus {
 			usersToNotify, err := bot.cache.GetUsersToNotify(ctx)
 			if err != nil {
-				log.Println("Ошибка при получении пользователей для уведомления:", err)
+				log.Println("Ошибка при получении списка пользователей для уведомления:", err)
 				time.Sleep(10 * time.Second)
 				continue
 			}
@@ -282,21 +346,20 @@ func (b *Bot) CheckAPIStatus(bot *Bot, ctx context.Context, urlApi *string) {
 			for id, mes := range usersToNotify {
 				value, err := strconv.Atoi(id)
 				if err != nil {
-					log.Println("Ошибка при преобразовании userID:", err)
+					log.Println("Ошибка при преобразовании userID в int 64:", err)
 					continue
 				}
 				cmd := exec.Command("curl", *urlApi)
 				_, err = cmd.CombinedOutput()
 				if err != nil {
 					if err := b.cache.SetAPIStatus(ctx, false); err != nil {
-						log.Printf("Error setting API status: %v", err)
+						log.Println("Ошибка при установке статуса API:", err)
 					}
 				} else {
 					if err := bot.SendNotificationRestore(int64(value)); err != nil {
-						log.Println("Ошибка при отправке уведомления пользователю:", err)
+						log.Println("Ошибка при отправке уведомления о восстановлении пользователю:", err)
 					}
-					err = bot.cache.ClearUsersToNotify(ctx, int64(value), mes)
-					if err != nil {
+					if err = bot.cache.ClearUsersToNotify(ctx, int64(value), mes); err != nil {
 						log.Println("Ошибка при отчистке списка уведомления пользователю:", err)
 					}
 				}
@@ -309,7 +372,7 @@ func (b *Bot) CheckAPIStatus(bot *Bot, ctx context.Context, urlApi *string) {
 				log.Println("Ошибка при выполнении запроса к API:", err)
 			} else {
 				if err := b.cache.SetAPIStatus(ctx, true); err != nil {
-					log.Printf("Error setting API status: %v", err)
+					log.Println("Ошибка при установке статуса API:", err)
 				}
 			}
 		}
@@ -329,7 +392,8 @@ func (b *Bot) SendNotificationRestore(ChatID int64) error {
 		),
 	)
 
-	_, err := b.bot.Send(msg)
-	return err
-
+	if _, err := b.bot.Send(msg); err != nil {
+		return errors.New("Ошибка при отправке сообщения: " + err.Error())
+	}
+	return nil
 }

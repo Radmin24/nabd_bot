@@ -36,8 +36,22 @@ func (c *Cache) AddUserToNotify(ctx context.Context, userID int64, jsonData []by
 	return c.client.HSet(ctx, "users_to_notify", userID, jsonData).Err()
 
 }
+
 func (c *Cache) GetUsersToNotifyFromYES(ctx context.Context, userID string) (string, error) {
-	return c.client.HGet(ctx, "users_notificated", userID).Result()
+
+	result, err := c.client.HGet(ctx, "users_notificated", userID).Result()
+	if err == redis.Nil {
+		return "", fmt.Errorf("user not found in redis")
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return result, nil
+}
+
+func (c *Cache) DeleteUserToNotifyFromYes(ctx context.Context, userID string) error {
+	return c.client.HDel(ctx, "users_notificated", fmt.Sprintf("%d", userID)).Err()
 }
 
 func (c *Cache) GetUsersToNotify(ctx context.Context) (map[string]string, error) {

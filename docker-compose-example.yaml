@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  redis_server:
+    image: redis:latest
+    restart: always
+    mem_limit: 4g
+    ports: 
+      - "6379:6379"
+    volumes: 
+      - redis_data:/data
+    networks: 
+      - bot_network
+
+  bot:
+    # image: nbd_bot:latest
+    build: .
+    restart: always
+    mem_limit: 1g
+    environment:
+      - TELEGRAM_TOKEN=*****
+      - API_ENDPOINT=http://127.0.0.1:8080/botapi/
+      - API_ORM_URL=******
+      - VERSION_API=v1
+      - REDIS_ADDR=redis_server:6379
+      - REDIS_PASSWORD=
+      - TIMEOUT=10
+      - REDIS_DB=0
+      - DEBUG=true
+    depends_on:
+      - redis_server
+    networks: 
+      - bot_network
+    volumes:
+      - /var/log/log_bot.log:/var/log/bot.log
+
+networks:
+  bot_network:
+    driver: bridge
+
+volumes:
+  redis_data:
