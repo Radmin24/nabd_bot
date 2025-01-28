@@ -263,6 +263,7 @@ func (b *Bot) QueryMyHandler(ctx context.Context, update tgbotapi.Update) error 
 }
 
 func Sender(message *models.ControllerResponce, b *Bot, chatID int64, ctx context.Context) error {
+
 	msg := tgbotapi.NewMessage(chatID, message.Answer)
 	if message.IsKb {
 		keyboard := message.Keyboard

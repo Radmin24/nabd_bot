@@ -27,6 +27,8 @@ services:
       - TIMEOUT=10
       - REDIS_DB=0
       - DEBUG=true
+      - GRPC_PORT=50051
+      - GRPCTIMEOUT=10
     depends_on:
       - redis_server
     networks: 

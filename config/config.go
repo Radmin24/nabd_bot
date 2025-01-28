@@ -18,6 +18,8 @@ type Config struct {
 	Timeout       int
 	Debug         bool
 	RedisDB       int
+	GRPCPort      string
+	GRPCTimeout   int
 }
 
 func NewConfig() *Config {
@@ -37,6 +39,12 @@ func NewConfig() *Config {
 		timeout = 10
 	}
 
+	gRPCtimeout, err := strconv.Atoi(getEnv("GRPCTIMEOUT", "10"))
+	if err != nil {
+		log.Printf("Warning: Invalid GRPCTIMEOUT value, using default: 10")
+		timeout = 10
+	}
+
 	conf := &Config{
 		TelegramToken: getEnv("TELEGRAM_TOKEN", ""),
 		APIEndpoint:   getEnv("API_ENDPOINT", "http://127.0.0.1:8080/botapi/"),
@@ -47,6 +55,8 @@ func NewConfig() *Config {
 		Timeout:       timeout,
 		Debug:         getEnv("DEBUG", "false") == "true",
 		RedisDB:       redisDB,
+		GRPCPort:      getEnv("GRPC_PORT", "50051"),
+		GRPCTimeout:   gRPCtimeout,
 	}
 
 	conf.APIEndpoint = conf.APIEndpoint + conf.VersionAPI + "/"
