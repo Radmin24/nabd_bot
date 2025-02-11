@@ -30,6 +30,10 @@ func main() {
 
 	go bot.CheckAPIStatus(bot, ctx, &cfg.APIEndpoint)
 
+	if err := bot.Start(); err != nil {
+		log.Fatalf("Error running bot: %v", err)
+	}
+
 	log.Println("Bot started...")
 
 	grpcServer := grpc.NewServer()
@@ -48,10 +52,6 @@ func main() {
 	log.Println("gRPC server is running on port " + cfg.GRPCPort)
 	if err := grpcServer.Serve(listener); err != nil {
 		log.Fatalf("Failed to serve: %v", err)
-	}
-
-	if err := bot.Start(); err != nil {
-		log.Fatalf("Error running bot: %v", err)
 	}
 
 }

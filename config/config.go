@@ -1,14 +1,19 @@
 package config
 
 import (
+	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
+	TelegramBot   string
 	TelegramToken string
 	APIEndpoint   string
 	APIorm        string
@@ -27,41 +32,89 @@ func NewConfig() *Config {
 		log.Printf("Warning: Error loading .env file: %v", err)
 	}
 
-	redisDB, err := strconv.Atoi(getEnv("REDIS_DB", "0"))
-	if err != nil {
-		log.Printf("Warning: Invalid REDIS_DB value, using default: 0")
+	redisDB, err := strconv.Atoi(os.Getenv("REDIS_DB"))
+	if err != nil || redisDB < 0 {
+		redisDB = 0
+	} else if err != nil {
+		log.Printf("Warning: Invalid REDIS_DB value, using default: %d", 0)
 		redisDB = 0
 	}
 
-	timeout, err := strconv.Atoi(getEnv("TIMEOUT", "10"))
-	if err != nil {
-		log.Printf("Warning: Invalid TIMEOUT value, using default: 10")
+	timeout, err := strconv.Atoi(os.Getenv("TIMEOUT"))
+	if err != nil || timeout < 0 {
+		timeout = 10
+	} else if err != nil {
+		log.Printf("Warning: Invalid TIMEOUT value, using default: %d", 10)
 		timeout = 10
 	}
 
-	gRPCtimeout, err := strconv.Atoi(getEnv("GRPCTIMEOUT", "10"))
-	if err != nil {
-		log.Printf("Warning: Invalid GRPCTIMEOUT value, using default: 10")
-		timeout = 10
+	gRPCtimeout, err := strconv.Atoi(os.Getenv("GRPCTIMEOUT"))
+	if err != nil || gRPCtimeout < 0 {
+		gRPCtimeout = 10
+	} else if err != nil {
+		log.Printf("Warning: Invalid GRPCTIMEOUT value, using default: %d", 10)
+		gRPCtimeout = 10
 	}
 
 	conf := &Config{
-		TelegramToken: getEnv("TELEGRAM_TOKEN", ""),
-		APIEndpoint:   getEnv("API_ENDPOINT", "http://127.0.0.1:8080/botapi/"),
-		APIorm:        getEnv("API_ORM_URL", "http://127.0.0.1:8081/"),
-		RedisAddr:     getEnv("REDIS_ADDR", "127.0.0.1:6379"),
-		RedisPassword: getEnv("REDIS_PASSWORD", ""),
-		VersionAPI:    getEnv("VERSION_API", "v1"),
+		TelegramBot:   os.Getenv("TELEGRAM_BOT"),
+		APIEndpoint:   os.Getenv("API_ENDPOINT"),
+		APIorm:        os.Getenv("API_ORM_URL"),
+		RedisAddr:     os.Getenv("REDIS_ADDR"),
+		RedisPassword: os.Getenv("REDIS_PASSWORD"),
+		VersionAPI:    os.Getenv("VERSION_API"),
 		Timeout:       timeout,
-		Debug:         getEnv("DEBUG", "false") == "true",
 		RedisDB:       redisDB,
-		GRPCPort:      getEnv("GRPC_PORT", "50051"),
+		GRPCPort:      os.Getenv("GRPC_PORT"),
 		GRPCTimeout:   gRPCtimeout,
 	}
 
+	if conf.TelegramBot == "" {
+		log.Fatal("Error: TELEGRAM_BOT is not set in env  compose")
+	}
+
+	if conf.APIEndpoint == "" {
+		log.Fatal("Error: API_ENDPOINT is not set in env  compose")
+	}
+	if conf.RedisAddr == "" {
+		log.Fatal("Error: REDIS_ADDR is not set in env  compose")
+	}
+
+	if conf.RedisPassword == "" {
+		log.Println("Use default Redis password ")
+	}
+
+	if conf.APIorm == "" {
+		log.Println("Use default API orm url http://127.0.0.1:8081/")
+	}
+
+	if conf.VersionAPI == "" {
+		log.Println("Use default version API v1")
+	}
+
+	Debug := os.Getenv("DEBUG")
+
+	if Debug == "" {
+		log.Println("Use default debug mode folse")
+	} else if Debug == "true" {
+		log.Println("Use debug mode true")
+		conf.Debug = true
+	} else {
+		conf.Debug = false
+	}
+
+	if conf.GRPCPort == "" {
+		log.Println("Use default GRPC port 50051")
+		conf.GRPCPort = "50051"
+	}
+
+	conf.APIorm = conf.APIorm + "botconfig/"
+
+	conf.TelegramToken = GetTocken(conf.TelegramBot, conf.APIorm)
+
 	conf.APIEndpoint = conf.APIEndpoint + conf.VersionAPI + "/"
 
-	log.Println("Base API endpoint:", conf.APIEndpoint)
+	log.Println("Config start:", conf)
 
 	return conf
 }
@@ -71,4 +124,22 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func GetTocken(botName string, urlorm string) string {
+
+	url := urlorm + "?caption=" + botName
+
+	req, _ := http.NewRequest("GET", url, nil)
+	res, _ := http.DefaultClient.Do(req)
+
+	defer res.Body.Close()
+	body, _ := ioutil.ReadAll(res.Body)
+
+	stingtocken := string(body)
+	tocken := strings.Trim(stingtocken, "\"")
+
+	fmt.Println("Use tocken:", tocken)
+
+	return tocken
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"not_a_boring_date_bot/api"
 	"not_a_boring_date_bot/cache"
@@ -56,7 +57,6 @@ func (b *Bot) Start() error {
 
 	for update := range updates {
 		isCallback := update.CallbackQuery != nil
-
 		if isCallback {
 			if apiStatus {
 				if update.CallbackQuery.Data == "yes_my_handler" {
@@ -108,16 +108,14 @@ func (b *Bot) sendFormController(ctx context.Context, update tgbotapi.Update) er
 
 	if update.CallbackQuery != nil {
 		chatID = update.CallbackQuery.Message.Chat.ID
-		// updateType = "callbacks"
-		updateType = "commands"
-
+		updateType = "callbacks"
 	} else if update.Message != nil {
+		chatID = update.Message.Chat.ID
 		if update.Message.IsCommand() {
 			updateType = "commands"
+		} else {
+			updateType = "messages"
 		}
-		chatID = update.Message.Chat.ID
-		// updateType = "messages"
-		updateType = "commands"
 	} else {
 		return errors.New("Неизвестный тип обновления")
 	}
@@ -142,14 +140,15 @@ func (b *Bot) sendFormController(ctx context.Context, update tgbotapi.Update) er
 		if _, err := b.bot.Send(msg); err != nil {
 			return errors.New("Ошибка при отправки сообшения: " + err.Error())
 		}
+		return nil
 	}
 
-	var queue []*models.ControllerResponce
-
-	queue = append(queue, apiResp)
+	queue := make([]models.ControllerResponce, 0)
 
 	if apiResp.IsNextMsg {
-		apiRespId, err := b.api.SendID(ctx, apiResp.Id)
+		queue = append(queue, *apiResp)
+
+		apiRespId, err := b.api.SendID(ctx, apiResp.NextMsg)
 		if err != nil {
 			if err := b.cache.SetAPIStatus(ctx, false); err != nil {
 				log.Printf("Ошибка при установке статуса API: %v", err)
@@ -170,9 +169,14 @@ func (b *Bot) sendFormController(ctx context.Context, update tgbotapi.Update) er
 				return errors.New("Ошибка при отправке сообщения: " + err.Error())
 			}
 		}
+
+		fmt.Println("Последующий ответ :", apiRespId)
+
 		queue = append(queue, apiRespId)
 
-		id := apiRespId.Id
+		fmt.Println("apiRespId.Id:", apiRespId.Id)
+
+		id := apiRespId.NextMsg
 
 		for {
 			resp, err := b.api.SendID(ctx, id)
@@ -201,7 +205,7 @@ func (b *Bot) sendFormController(ctx context.Context, update tgbotapi.Update) er
 				log.Println("Ошибка загрузке так как повтор id:", id)
 				break
 			}
-			id = resp.Id
+			id = resp.NextMsg
 			if !resp.IsNextMsg {
 				break
 			}
@@ -209,7 +213,7 @@ func (b *Bot) sendFormController(ctx context.Context, update tgbotapi.Update) er
 
 	}
 
-	if len(queue) > 0 {
+	if len(queue) >= 0 {
 		for _, v := range queue {
 			Sender(v, b, chatID, ctx)
 			if v.Delay > 0 {
@@ -217,7 +221,7 @@ func (b *Bot) sendFormController(ctx context.Context, update tgbotapi.Update) er
 			}
 		}
 	} else {
-		Sender(apiResp, b, chatID, ctx)
+		Sender(*apiResp, b, chatID, ctx)
 	}
 
 	return nil
@@ -262,7 +266,7 @@ func (b *Bot) QueryMyHandler(ctx context.Context, update tgbotapi.Update) error 
 	return nil
 }
 
-func Sender(message *models.ControllerResponce, b *Bot, chatID int64, ctx context.Context) error {
+func Sender(message models.ControllerResponce, b *Bot, chatID int64, ctx context.Context) error {
 
 	msg := tgbotapi.NewMessage(chatID, message.Answer)
 	if message.IsKb {

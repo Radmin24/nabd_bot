@@ -7,6 +7,7 @@ type ControllerResponce struct {
 	IsKb      bool     `json:"isKb"`
 	Image     string   `json:"image"`
 	IsNextMsg bool     `json:"isNextMsg"`
+	NextMsg   int      `json:"nextMsg"`
 	Id        int      `json:"id"`
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"not_a_boring_date_bot/internal/models"
@@ -33,6 +34,8 @@ func (c *Client) SendCommand(ctx context.Context, data interface{}, updateType s
 		return nil, err
 	}
 
+	fmt.Println("URL:", c.baseURL+updateType)
+
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+updateType, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
@@ -50,46 +53,52 @@ func (c *Client) SendCommand(ctx context.Context, data interface{}, updateType s
 	}
 
 	var apiResp models.ControllerResponce
-
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return &models.ControllerResponce{}, err
+	}
+	fmt.Println("Ответ с клиента:", string(body))
 	err = json.NewDecoder(resp.Body).Decode(&apiResp)
 	if err != nil {
 		log.Printf("error decoding response body into models.ControllerResponce struct: %v\n", err)
 		return nil, err
 	}
 
+	fmt.Println("Answer :", apiResp)
+
 	return &apiResp, nil
 }
 
-func (c *Client) SendID(ctx context.Context, id int) (*models.ControllerResponce, error) {
+func (c *Client) SendID(ctx context.Context, id int) (models.ControllerResponce, error) {
 
-	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"messages/", nil)
-	if err != nil {
-		return nil, err
-	}
-	q := req.URL.Query()
-	q.Add("id", strconv.Itoa(id))
-	req.URL.RawQuery = q.Encode()
-	req.Header.Set("Content-Type", "application/json")
+	url := c.baseURL + "messages/" + strconv.Itoa(id)
 
-	resp, err := c.httpClient.Do(req)
+	fmt.Println(url)
+
+	resp, err := c.httpClient.Get(url)
 	if err != nil {
-		return nil, err
+		return models.ControllerResponce{}, err
 	}
 	defer resp.Body.Close()
 
-	// log.Println(resp)
-
 	if resp.StatusCode != http.StatusOK {
-		return nil, errors.New("api returned non-200 status code")
+		return models.ControllerResponce{}, errors.New("api returned non-200 status code")
 	}
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return models.ControllerResponce{}, err
+	}
+	fmt.Println("Ответ с клиента:", string(body))
 	var apiResp models.ControllerResponce
 
 	err = json.NewDecoder(resp.Body).Decode(&apiResp)
 	if err != nil {
 		log.Printf("error decoding response body into models.ControllerResponce struct: %v\n", err)
-		return nil, err
+		return models.ControllerResponce{}, err
 	}
 
-	return &apiResp, nil
+	fmt.Println("Отправляю в условие:", apiResp)
+
+	return apiResp, nil
 }

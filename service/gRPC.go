@@ -24,7 +24,7 @@ func (s *ServergRPC) SendMessage(ctx context.Context, req *pb.GRPCMessage) (*pb.
 			Message: "Bot object is nil",
 		}, fmt.Errorf("bot object is nil")
 	}
-	err := bot.Sender(controllerResp, s.Bot_g, req.ChatId, ctx)
+	err := bot.Sender(*controllerResp, s.Bot_g, req.ChatId, ctx)
 
 	if err != nil {
 		return &pb.Response{
