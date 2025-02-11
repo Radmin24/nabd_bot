@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package grpcmessage;
+
+option go_package = "grpc/;grpcmessage";
+
+// Сообщение для кнопок
+message Button {
+  string caption = 1;
+  string data = 2;
+  int32 order = 3;
+  int32 row = 4;
+}
+
+// Сообщение для клавиатуры
+message Keyboard {
+  repeated Button buttons = 1;
+  string type = 2;
+}
+
+// Основное сообщение
+message gRPCMessage {
+  string mes = 1;
+  int32 delay = 2;
+  Keyboard keyboard = 3;
+  bool isKb = 4;
+  string image = 5;
+  int64 chat_id = 6;
+}
+
+// Сервис
+service gRPCService {
+  rpc SendMessage(gRPCMessage) returns (Response);
+}
+
+// Ответ
+message Response {
+  string status = 1;
+  string message = 2;
+}
