@@ -136,6 +136,7 @@ func (b *Bot) sendFormController(ctx context.Context, update tgbotapi.Update) er
 		}
 
 		msg := tgbotapi.NewMessage(chatID, messages.APIUnavailable)
+		fmt.Println("NO API")
 		msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
 		if _, err := b.bot.Send(msg); err != nil {
 			return errors.New("Ошибка при отправки сообшения: " + err.Error())
@@ -170,11 +171,11 @@ func (b *Bot) sendFormController(ctx context.Context, update tgbotapi.Update) er
 			}
 		}
 
-		fmt.Println("Последующий ответ :", apiRespId)
+		// fmt.Println("Последующий ответ :", apiRespId)
 
 		queue = append(queue, apiRespId)
 
-		fmt.Println("apiRespId.Id:", apiRespId.Id)
+		// fmt.Println("apiRespId.Id:", apiRespId.Id)
 
 		id := apiRespId.NextMsg
 
@@ -200,6 +201,7 @@ func (b *Bot) sendFormController(ctx context.Context, update tgbotapi.Update) er
 					return errors.New("Ошибка при отправке сообщения: " + err.Error())
 				}
 			}
+
 			queue = append(queue, resp)
 			if id == resp.Id {
 				log.Println("Ошибка загрузке так как повтор id:", id)

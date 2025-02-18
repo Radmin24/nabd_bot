@@ -53,12 +53,14 @@ func (c *Client) SendCommand(ctx context.Context, data interface{}, updateType s
 	}
 
 	var apiResp models.ControllerResponce
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return &models.ControllerResponce{}, err
 	}
+	buf := bytes.NewBuffer(body)
 	fmt.Println("Ответ с клиента:", string(body))
-	err = json.NewDecoder(resp.Body).Decode(&apiResp)
+	err = json.NewDecoder(buf).Decode(&apiResp)
 	if err != nil {
 		log.Printf("error decoding response body into models.ControllerResponce struct: %v\n", err)
 		return nil, err
@@ -91,8 +93,8 @@ func (c *Client) SendID(ctx context.Context, id int) (models.ControllerResponce,
 	}
 	fmt.Println("Ответ с клиента:", string(body))
 	var apiResp models.ControllerResponce
-
-	err = json.NewDecoder(resp.Body).Decode(&apiResp)
+	buf := bytes.NewBuffer(body)
+	err = json.NewDecoder(buf).Decode(&apiResp)
 	if err != nil {
 		log.Printf("error decoding response body into models.ControllerResponce struct: %v\n", err)
 		return models.ControllerResponce{}, err
